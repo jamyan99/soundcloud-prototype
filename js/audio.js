@@ -21,6 +21,7 @@ class SoundCloudSource {
     frame.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(first.sc) +
       '&auto_play=false&visual=false&show_artwork=false&buying=false&sharing=false&download=false&show_comments=false&show_playcount=false&single_active=false';
     document.getElementById('sc-host').appendChild(frame);
+    this.loadedUrl = first.sc;
     this.w = window.SC.Widget(frame);
     const E = window.SC.Widget.Events;
     this.w.bind(E.READY, () => {
@@ -37,19 +38,44 @@ class SoundCloudSource {
   load(url, play, startMs = 0) {
     if (!this.ready) { this.queued = { url, play, startMs }; return; }
     this.pendingSeek = startMs > 1000 ? startMs : 0;
-    this.seekTries = 0;
+    this.seekDeadline = 0;
+    // Stay quiet until the jump to the start position lands, so the song doesn't blip from 0:00 first.
+    this.mute(!!this.pendingSeek);
+    const started = () => {
+      this.w.getDuration((d) => d > 0 && this.emit('duration', { ms: d }));
+      this.w.seekTo(this.pendingSeek);
+      if (play) this.w.play();
+    };
+    // Reloading a track SoundCloud already has costs seconds, so only load when it changes.
+    if (url === this.loadedUrl) return started();
+    this.loadedUrl = url;
     this.w.load(url, {
       auto_play: false, visual: false, show_artwork: false, buying: false, sharing: false, download: false,
       show_comments: false, show_playcount: false, single_active: false,
-      callback: () => {
-        this.w.getDuration((d) => d > 0 && this.emit('duration', { ms: d }));
-        if (play) this.w.play();
-      },
+      callback: started,
     });
   }
   play() { this.ready ? this.w.play() : this.queued && (this.queued.play = true); }
   pause() { this.ready ? this.w.pause() : this.queued && (this.queued.play = false); }
   seek(ms) { if (this.ready) this.w.seekTo(ms); }
+  mute(on) { if (this.ready && this.muted !== on) { this.muted = on; this.w.setVolume(on ? 0 : 100); } }
+}
+
+// iPhones mute Web Audio (Night Drive, the ad jingle) while the ring/silent switch is on.
+// Asking for a "playback" audio session keeps it audible, the way a music app is.
+function playThroughSilentSwitch() {
+  if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) { /* not allowed here */ } return; }
+  // Older iPhones: a playing <audio> element switches the session to playback, so loop a silent clip.
+  // Only on iOS: elsewhere it would show a "media playing" notification for nothing.
+  const iOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!iOS) return;
+  const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+  const str = (o, s) => [...s].forEach((c, i) => { b[o + i] = c.charCodeAt(0); });
+  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+  const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' })));
+  a.loop = true; a.playsInline = true; a.play().catch(() => {});
 }
 
 // ---------- Web Audio synth ----------
@@ -232,6 +258,7 @@ export class Player {
   unlock() {
     if (this.unlocked) return;
     this.unlocked = true;
+    playThroughSilentSwitch();
     this.ensureCtx();
     if (this.ad) this.startJingle();
     else if (this.trackId) this.startSource(this.basePos, this.playing);
@@ -296,7 +323,7 @@ export class Player {
     this.basePos = ms; this.baseAt = now();
     if (this.previewEnd) this.previewEnd = null;
     if (this.unlocked) {
-      if (this.kind === 'sc') { this.sc.pendingSeek = ms; this.sc.seekTries = 0; this.sc.seek(ms); }
+      if (this.kind === 'sc') { this.sc.pendingSeek = ms; this.sc.seekDeadline = 0; this.sc.seek(ms); }
       else if (this.kind === 'synth' && this.synth) this.playing ? this.synth.play(ms / 1000) : (this.synth.offset = ms / 1000);
     }
     this.emit('seek', ms);
@@ -305,11 +332,18 @@ export class Player {
   onSC(type, d) {
     if (this.kind !== 'sc' && type !== 'error') return;
     if (type === 'progress') {
-      const ps = this.sc.pendingSeek;
+      const sc = this.sc, ps = sc.pendingSeek;
       if (ps) {
-        // The widget ignores seeks until audio is buffered, so retry a few times.
-        if (Math.abs(d.ms - ps) > 1500 && (this.sc.seekTries = (this.sc.seekTries || 0) + 1) < 8) { this.sc.seek(ps); return; }
-        this.sc.pendingSeek = 0;
+        // The widget can take the seek before audio has buffered, then start from 0:00 anyway.
+        // Wait until it's really playing just past the target, re-seeking if it wandered off.
+        sc.seekDeadline ||= now() + 10000;
+        const off = d.ms - ps;
+        if ((off < 300 || off > 1500) && now() < sc.seekDeadline) {
+          if (Math.abs(off) > 1500 && now() - (sc.lastSeek || 0) > 300) { sc.seek(ps); sc.lastSeek = now(); }
+          return;
+        }
+        sc.pendingSeek = 0;
+        sc.mute(false);
       }
       this.basePos = d.ms; this.baseAt = now();
     } else if (type === 'playing') {
