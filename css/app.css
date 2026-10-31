@@ -113,6 +113,13 @@ body.capture *, body.capture *::before, body.capture *::after { animation-durati
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 10px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .carousel.dragging, .chips.dragging { scroll-snap-type: none; cursor: grabbing; }
+
+/* One tap before a task that opens with music playing, since browsers need a tap to allow sound. */
+.tap-start { position: absolute; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(0, 0, 0, .74); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: var(--text); transition: opacity .3s; }
+.tap-start svg { margin-bottom: 6px; color: var(--orange); }
+.tap-start b { font-size: 24px; font-weight: 800; }
+.tap-start span { font-size: 15px; color: var(--text2); }
+.tap-start.gone { opacity: 0; pointer-events: none; }
 .chip { flex: none; padding: 7px 14px; border: 1.5px solid #fff; border-radius: 999px; font-size: 15px; font-weight: 600; transition: background .2s, color .2s, transform .12s; }
 .chip:active { transform: scale(.95); }
 .chip.on { background: #fff; color: #000; }

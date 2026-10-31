@@ -260,7 +260,8 @@ export class Player {
     this.unlocked = true;
     playThroughSilentSwitch();
     this.ensureCtx();
-    if (this.ad) this.startJingle();
+    // Like the song position, the ad countdown waits for sound: the 30 seconds start now.
+    if (this.ad) { this.ad.t0 = now(); this.startJingle(); }
     else if (this.trackId) this.startSource(this.basePos, this.playing);
   }
 
@@ -270,7 +271,10 @@ export class Player {
     if (!this.playing) return this.basePos;
     return Math.min(this.dur, this.basePos + (now() - this.baseAt));
   }
-  remaining() { return this.ad ? Math.max(0, this.ad.total - (now() - this.ad.t0)) : 0; }
+  remaining() {
+    if (!this.ad) return 0;
+    return this.unlocked ? Math.max(0, this.ad.total - (now() - this.ad.t0)) : this.ad.total;
+  }
 
   load(trackId, { autoplay = true, startMs = 0, preview = false } = {}) {
     this.stopSource();

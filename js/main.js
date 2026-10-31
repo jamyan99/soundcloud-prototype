@@ -567,9 +567,16 @@ addEventListener('keydown', (e) => {
   if (e.key === ' ' && player.trackId) { e.preventDefault(); player.toggle(); sync(); }
   if (e.key === 'Escape') { closeSheet(); if (S.playerOpen) closePlayer(); }
 });
-// Browsers allow sound only after the first interaction.
-addEventListener('pointerdown', () => player.unlock(), { capture: true, once: true });
-addEventListener('keydown', () => player.unlock(), { capture: true, once: true });
+// Browsers allow sound only inside a real tap or key press. On phones that's when the finger
+// lifts, not when it lands, so skip events that don't count yet instead of failing silently.
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'keydown'];
+function tryUnlock(e) {
+  const ua = navigator.userActivation;
+  if (ua ? !ua.isActive : e.type === 'pointerdown' && e.pointerType !== 'mouse') return;
+  player.unlock();
+  UNLOCK_EVENTS.forEach((ev) => removeEventListener(ev, tryUnlock, true));
+}
+UNLOCK_EVENTS.forEach((ev) => addEventListener(ev, tryUnlock, true));
 
 // ---------- Player events ----------
 player.on('track', (id) => { addToHistory(id); renderPlayerTrack(); refreshRoutes(['library', 'history', 'insights']); });
@@ -632,6 +639,15 @@ if (task === '1') {
 }
 refreshRoutes(['library']);
 sync();
+// A task that opens with music playing stays silent until the first tap, and that tap is often
+// on Pause, which turns the sound on and straight off. So ask for one tap before the task starts.
+if ((player.playing || player.ad) && !CAPTURE) {
+  const gate = document.createElement('button');
+  gate.className = 'tap-start';
+  gate.innerHTML = `${icon('volume', 40)}<b>Tap to start</b><span>Turn your sound on</span>`;
+  gate.addEventListener('click', () => { gate.classList.add('gone'); setTimeout(() => gate.remove(), 300); });
+  app.appendChild(gate);
+}
 requestAnimationFrame(frame);
 // Animation frames pause in background tabs; keep ads and track endings on time anyway.
 setInterval(() => { if (document.hidden) player.tick(); }, 500);
