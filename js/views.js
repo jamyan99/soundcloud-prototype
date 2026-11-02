@@ -296,6 +296,18 @@ function playlist({ id }) {
     <div class="end-space"></div>`,
   };
 }
+// Bio redesign: the bio and links sit on the profile, labeled, so nobody has to guess what "Show more" hides.
+export const linkMsg = (a, l) => `In the real app, this opens ${a.name} on ${l.label}`;
+export const artistLinks = (a) => `<div class="ar-links">${a.links.map((l) => `<button class="ar-link tap" data-action="toast" data-msg="${esc(linkMsg(a, l))}">${icon(l.type, 18)}<span>${esc(l.label)}</span></button>`).join('')}</div>`;
+function aboutSection(a) {
+  if (!a.bio) return '';
+  const long = a.bio.length > 140;
+  return `<section class="sec ar-about">${sectionHead(`About ${esc(a.name)}`)}
+    <div class="ar-from">${icon('map-pin', 16)}<span>${esc(a.from)}</span></div>
+    <p class="ar-bio ${long ? 'clamp' : ''}">${esc(a.bio)}</p>
+    ${long ? `<button class="ar-more tap" data-action="sheet-bio" data-artist="${a.id}">Read full bio ${icon('chevron-right', 16)}</button>` : ''}
+    ${artistLinks(a)}</section>`;
+}
 function artist({ id }) {
   const a = getArtist(id);
   const key = reg('artist-' + id, a.tracks);
@@ -308,6 +320,7 @@ function artist({ id }) {
       <div class="ar-actions"><button class="follow-pill" data-action="follow" data-artist="${a.id}" data-follow="${a.id}"><span class="f-off">Follow</span><span class="f-on">Following</span></button>
       <button class="icon-btn" data-action="play-list" data-ctx="${key}" data-index="0" aria-label="Play artist">${icon('radio', 24)}</button>
       <button class="icon-btn" data-action="sheet-share" data-artist="${a.id}" aria-label="Share">${icon('share', 22)}</button></div></div>
+    ${aboutSection(a)}
     <div class="sec">${sectionHead('Popular tracks')}${a.tracks.map((t, i) => trackRow(t, key, i, { plays: true })).join('')}</div>
     ${id !== 'kairo' ? `<div class="sec">${sectionHead('Fans also like')}${carousel(others.map((o) => `<button class="card circle tap" data-action="open-artist" data-id="${o.id}"><div class="card-art round">${img(o.art)}</div><div class="card-title center">${esc(o.name)}</div></button>`))}</div>` : `<p class="note">Kairo is a new artist on SoundCloud. Follow to hear new tracks first.</p>`}
     <div class="end-space"></div>`,

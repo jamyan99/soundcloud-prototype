@@ -54,6 +54,16 @@ export const ART = {
   ad: svg(`<defs><linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2a65a"/><stop offset="1" stop-color="#6b3a12"/></linearGradient></defs><rect width="200" height="200" fill="url(#c)"/><g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M50 82h88v46a30 30 0 0 1-30 30H80a30 30 0 0 1-30-30z"/><path d="M138 94h10a18 18 0 0 1 0 36h-10"/><path d="M72 40v18M94 34v24M116 40v18"/></g>`, 200, 200),
 };
 
+// Stand-in covers, used only when the real SoundCloud artwork can't load (for example on hosts that block it).
+export const FALLBACK_ART = {
+  [ART.headlines]: editorial({ bg1: '#2b2316', bg2: '#8a6a2c', lines: ['HEAD', 'LINES'], color: '#e9cf8f', size: 110, y: 250 }),
+  [ART.nokia]: editorial({ bg1: '#03122e', bg2: '#1f6fd6', lines: ['NOKIA'], size: 120, y: 290, pattern: grid('#ffffff22') }),
+  [ART.highest]: editorial({ bg1: '#7fb2e5', bg2: '#f3e6d0', lines: ['HIGHEST', 'IN THE', 'ROOM'], color: '#5a2c12', size: 76, y: 200 }),
+  [ART.wgft]: editorial({ bg1: '#111', bg2: '#4b4b4b', lines: ['WGFT'], size: 140, y: 300, pattern: rings('#ffffff22') }),
+  [ART.proveit]: editorial({ bg1: '#3a1424', bg2: '#d04a6b', lines: ['PROVE', 'IT'], size: 120, y: 240, pattern: dots('#ffffff') }),
+  [ART.greece]: editorial({ bg1: '#3b2a0c', bg2: '#c8a24a', lines: ['GREECE'], color: '#fff6dc', size: 104, y: 290, pattern: grid('#00000022') }),
+};
+
 // ---------- Tracks ----------
 export const TRACKS = {
   headlines: { id: 'headlines', title: 'Headlines', fullTitle: 'Headlines (Explicit Version)', artist: 'drake', by: 'Drake', uploader: 'octobersveryown', art: ART.headlines, sc: 'https://soundcloud.com/octobersveryown/drake-headlines', dur: 236000, plays: 27.9e6, likes: 439000, comments: 2240, genre: 'hiphop' },
@@ -73,6 +83,18 @@ export const ARTISTS = {
   khaled: { id: 'khaled', name: 'DJ Khaled', verified: true, followers: 2.9e6, art: ART.greece, tracks: ['greece'] },
   kairo: { id: 'kairo', name: 'Kairo', verified: false, followers: 4210, art: ART.nightdrive, tracks: ['nightdrive'] },
 };
+
+// Bio redesign: where the artist is from, a bio you can read without tapping anything,
+// and labeled social links on the profile itself instead of hidden behind "Show more".
+const ABOUT = {
+  drake: { from: 'Toronto, Canada', bio: 'Rapper, singer, and songwriter from Toronto. Official SoundCloud of OVO Sound.', links: [['instagram', 'Instagram', '@champagnepapi'], ['youtube', 'YouTube', 'Drake'], ['globe', 'Website', 'drakerelated.com']] },
+  travis: { from: 'Houston, Texas', bio: 'Rapper, producer, and founder of Cactus Jack Records.', links: [['instagram', 'Instagram', '@travisscott'], ['youtube', 'YouTube', 'Travis Scott'], ['globe', 'Website', 'travisscott.com']] },
+  gunna: { from: 'Atlanta, Georgia', bio: 'Rapper from College Park, Atlanta.', links: [['instagram', 'Instagram', '@gunna'], ['tiktok', 'TikTok', '@gunna'], ['youtube', 'YouTube', 'Gunna']] },
+  savage: { from: 'Atlanta, Georgia', bio: 'Rapper from Atlanta.', links: [['instagram', 'Instagram', '@21savage'], ['youtube', 'YouTube', '21 Savage']] },
+  khaled: { from: 'Miami, Florida', bio: 'DJ, producer, and host from Miami. We the Best.', links: [['instagram', 'Instagram', '@djkhaled'], ['youtube', 'YouTube', 'DJ Khaled'], ['globe', 'Website', 'wethebestmusic.com']] },
+  kairo: { from: 'Atlanta, Georgia', bio: "Atlanta-based producer making late-night synthwave for long drives with the windows down. Night Drive is my first track on SoundCloud, and I'm putting out a new one every month this year. Everything is made on an old laptop and a borrowed keyboard in my bedroom. For bookings, remixes, and collabs, reach out on Instagram or through my website.", links: [['instagram', 'Instagram', '@kairo.wav'], ['tiktok', 'TikTok', '@kairo.wav'], ['youtube', 'YouTube', 'Kairo'], ['globe', 'Website', 'kairomusic.com']] },
+};
+for (const [id, a] of Object.entries(ABOUT)) Object.assign(ARTISTS[id], { from: a.from, bio: a.bio, links: a.links.map(([type, label, handle]) => ({ type, label, handle })) });
 
 // ---------- Playlists ----------
 const P = (id, title, by, art, tracks, extra = {}) => ({ id, title, by, art, tracks, ...extra });

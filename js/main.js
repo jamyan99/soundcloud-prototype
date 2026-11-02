@@ -1,8 +1,8 @@
 // App shell: navigation, the redesigned full player, mini player, sheets, toasts, and task setup.
-import { TRACKS, PLAYLISTS, ARTISTS, ART, getTrack, getPlaylist, getArtist, fmtCount, fmtTime, waveform, commentsFor } from './data.js';
+import { TRACKS, PLAYLISTS, ARTISTS, ART, FALLBACK_ART, getTrack, getPlaylist, getArtist, fmtCount, fmtTime, waveform, commentsFor } from './data.js';
 import { icon } from './icons.js';
 import { S, player, playFrom, playTrack, next, prev, addToHistory, likeCount } from './store.js';
-import { ROUTES, LISTS, renderTrending, feedCards, searchResults, paywallBody, trackRow } from './views.js';
+import { ROUTES, LISTS, renderTrending, feedCards, searchResults, paywallBody, trackRow, artistLinks } from './views.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -68,6 +68,12 @@ app.innerHTML = `
   </section>
   <div class="sheet-layer"></div>
   <div class="toasts" aria-live="polite"></div>`;
+
+// If real artwork can't load on this host, swap in a stand-in cover instead of an empty box.
+document.addEventListener('error', (e) => {
+  const im = e.target;
+  if (im && im.tagName === 'IMG' && FALLBACK_ART[im.getAttribute('src')]) im.src = FALLBACK_ART[im.getAttribute('src')];
+}, true);
 
 const tabviews = Object.fromEntries(TABS.map((t) => [t, $(`[data-tabview="${t}"]`)]));
 const mini = $('.mini'), playerEl = $('.player'), sheetLayer = $('.sheet-layer'), toasts = $('.toasts');
@@ -345,6 +351,12 @@ function openTrackSheet(id) {
     ${sItem('share', 'Share', 'sheet-share', `data-track="${id}"`)}
     ${sItem('flag', 'Report', 'toast', 'data-msg="Thanks. Reports aren\'t sent from this prototype."')}</div>`);
 }
+function openBioSheet(id) {
+  const a = getArtist(id);
+  openSheet(`<div class="sh-title">About ${esc(a.name)}</div><div class="bio-sheet">
+    <div class="ar-from">${icon('map-pin', 16)}<span>${esc(a.from)}</span></div>
+    <p class="ar-bio">${esc(a.bio)}</p>${artistLinks(a)}</div>`);
+}
 function openAddSheet(id) {
   const t = getTrack(id);
   openSheet(`<div class="sh-title">Add to playlist</div>${sheetHead(t)}
@@ -445,6 +457,7 @@ const actions = {
   back: () => pop(),
   'open-playlist': (d) => { S.recent = [d.id, ...S.recent.filter((x) => x !== d.id)].slice(0, 8); push('playlist', { id: d.id }); },
   'open-artist': (d) => push('artist', { id: d.id }),
+  'sheet-bio': (d) => openBioSheet(d.artist),
   'open-genre': (d) => push('genre', { id: d.id }),
   'artist-current': () => player.trackId && push('artist', { id: getTrack(player.trackId).artist }),
   'play-list': (d) => {
@@ -509,7 +522,11 @@ const actions = {
   toast: (d) => toast(d.msg),
   'close-sheet': () => closeSheet(),
   'proto-menu': () => openProtoMenu(),
-  task: (d) => { location.search = d.n === '0' ? '' : `?task=${d.n}`; },
+  task: (d) => {
+    // Task links work as ?task=N or #task-N (hosts that drop query strings keep the hash).
+    if (location.search) { location.search = d.n === '0' ? '' : `?task=${d.n}`; return; }
+    location.hash = d.n === '0' ? '' : `task-${d.n}`; location.reload();
+  },
   'play-ad': () => { closeSheet(); player.startAd({ upNext: player.trackId || 'headlines' }); },
   'search-set': (d) => setSearch(d.q),
   'search-clear': () => setSearch(''),
@@ -618,7 +635,7 @@ function frame() {
 
 // ---------- Start state (task links for usability testing) ----------
 const params = new URLSearchParams(location.search);
-const task = params.get('task');
+const task = params.get('task') || (location.hash.match(/^#task-(\d)$/) || [])[1] || null;
 const adSeconds = +params.get('adsec') || 30;
 TABS.forEach(rootFor);
 tabviews.home.classList.add('active');

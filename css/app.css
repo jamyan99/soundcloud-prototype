@@ -461,3 +461,16 @@ body.capture *, body.capture *::before, body.capture *::after { animation-durati
 .ar-name { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; font-size: 26px; font-weight: 800; }
 .ar-sub { margin-top: 4px; font-size: 14px; color: #aaa; }
 .ar-actions { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 16px 0; }
+
+/* Bio redesign: bio and links visible on the artist profile */
+.ar-about .sec-head { padding-bottom: 8px; }
+.ar-from { display: flex; align-items: center; gap: 6px; padding: 0 16px; font-size: 14px; font-weight: 600; color: var(--text2); }
+.ar-bio { margin: 8px 0 0; padding: 0 16px; font-size: 15px; line-height: 1.45; color: #ddd; user-select: text; }
+.ar-bio.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ar-more { display: inline-flex; align-items: center; gap: 2px; margin: 6px 16px 0; font-size: 14px; font-weight: 700; color: var(--text); }
+.ar-links { display: flex; gap: 8px; padding: 14px 16px 4px; overflow-x: auto; scrollbar-width: none; }
+.ar-links::-webkit-scrollbar { display: none; }
+.ar-link { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 18px; background: var(--raised); font-size: 14px; font-weight: 600; transition: transform .12s; }
+.ar-link:active { transform: scale(.95); }
+.bio-sheet { padding: 4px 0 18px; }
+.bio-sheet .ar-links { flex-wrap: wrap; }
