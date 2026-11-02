@@ -9,7 +9,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css">
+  <!-- GitHub Pages lets browsers keep each file for 10 minutes, one file at a time, so right after an
+       update a phone could run new and old files together. Versioned URLs keep each update's files
+       together. Change v= in both places below whenever the prototype is updated. -->
+  <link rel="stylesheet" href="css/app.css?v=10">
+  <script type="importmap">
+    { "imports": {
+      "./js/main.js": "./js/main.js?v=10", "./js/audio.js": "./js/audio.js?v=10", "./js/data.js": "./js/data.js?v=10",
+      "./js/icons.js": "./js/icons.js?v=10", "./js/store.js": "./js/store.js?v=10", "./js/views.js": "./js/views.js?v=10"
+    } }
+  </script>
   <!-- SoundCloud's official Widget API: streams the real tracks -->
   <script src="https://w.soundcloud.com/player/api.js"></script>
   <!-- Figma capture helper: only loads with ?capture in the URL, never for testers -->
@@ -25,6 +34,6 @@
 <body>
   <div id="stage"><div id="device"><div id="app"></div></div></div>
   <div id="sc-host" aria-hidden="true"></div>
-  <script type="module" src="js/main.js"></script>
+  <script type="module">import './js/main.js';</script>
 </body>
 </html>
