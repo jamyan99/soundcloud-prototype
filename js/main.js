@@ -22,7 +22,7 @@ app.innerHTML = `
     <button class="mini-pp" data-action="toggle" aria-label="Play or pause">
       <svg class="ring" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21.5" class="ring-track"/><circle cx="24" cy="24" r="21.5" class="ring-fill" stroke-dasharray="135.1" stroke-dashoffset="135.1"/></svg>
       <span class="pp-dot">${icon('play', 18)}${icon('pause', 18)}</span></button>
-    <div class="mini-ad-art"><img src="${ART.ad}" alt=""></div>
+    <div class="mini-break-art"><img src="${ART.ad}" alt=""></div>
     <div class="mini-text"><div class="mini-title"></div><div class="mini-sub"></div></div>
     <button class="icon-btn mini-dev" data-action="sheet-devices" aria-label="Connect to a device">${icon('devices', 22)}</button>
     <button class="icon-btn like-btn mini-like" data-action="like-current" data-like-cur aria-label="Like">${icon('heart', 22)}${icon('heart-fill', 22)}</button>
@@ -272,7 +272,7 @@ function renderPlayerTrack() {
 // ---------- Mini player / ad state ----------
 function renderMini() {
   const ad = player.ad;
-  mini.classList.toggle('ad', !!ad);
+  mini.classList.toggle('on-break', !!ad);
   mini.classList.toggle('empty', !player.trackId && !ad);
   if (ad) {
     $('.mini-title').textContent = 'Ad · Brightside Coffee';
@@ -385,8 +385,8 @@ function openDevicesSheet() {
     ${sItem('devices', 'Chromecast', 'toast', 'data-msg="No Chromecast devices found"')}</div>`);
 }
 function openAdSheet() {
-  openSheet(`<div class="ad-sheet"><img src="${ART.ad}" alt=""><div class="ad-tag">Ad</div><h3>Brightside Coffee</h3><p>Wake up to something bright. Fresh roasts, delivered weekly.</p>
-    <button class="pill-btn white" data-action="visit-site">Visit site</button><p class="note">Your music continues in <b class="ad-left">30</b>s. Keep browsing while you wait.</p></div>`);
+  openSheet(`<div class="break-sheet"><img src="${ART.ad}" alt=""><div class="break-tag">Ad</div><h3>Brightside Coffee</h3><p>Wake up to something bright. Fresh roasts, delivered weekly.</p>
+    <button class="pill-btn white" data-action="visit-site">Visit site</button><p class="note">Your music continues in <b class="break-left">30</b>s. Keep browsing while you wait.</p></div>`);
 }
 function openPaywall(variant) {
   openSheet(`<button class="sheet-x circle-btn" data-action="close-sheet" aria-label="Close">${icon('x', 22)}</button>${paywallBody(variant)}`, { cls: 'full' });
@@ -613,7 +613,7 @@ function frame() {
     const rem = player.remaining(), frac = 1 - rem / player.ad.total;
     $('.cd-num').textContent = Math.ceil(rem / 1000);
     $('.cd-fill').setAttribute('stroke-dashoffset', (97.4 * (1 - frac)).toFixed(1));
-    const left = $('.ad-left'); if (left) left.textContent = Math.ceil(rem / 1000);
+    const left = $('.break-left'); if (left) left.textContent = Math.ceil(rem / 1000);
   } else if (player.trackId) {
     const pos = player.position(), dur = player.dur || 1, r = Math.min(1, pos / dur);
     $('.ring-fill').setAttribute('stroke-dashoffset', (135.1 * (1 - r)).toFixed(1));

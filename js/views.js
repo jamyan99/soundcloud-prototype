@@ -55,7 +55,7 @@ export function backHeader(title, { right = '', fade = true, center = true } = {
   return `<header class="nav-head ${fade ? 'fade-title' : ''}"><button class="circle-btn" data-action="back" aria-label="Back">${icon('chevron-left', 22)}</button><div class="nav-title ${center ? 'center' : ''}">${esc(title)}</div><div class="nav-right">${right}</div></header>`;
 }
 const emptyState = (title, body, btn, action) => `<div class="empty"><h3>${title}</h3><p>${body}</p>${btn ? `<button class="pill-btn white" ${action}>${btn}</button>` : ''}</div>`;
-const libHeader = (title) => `<header class="topbar"><button class="avatar tap" data-action="push" data-route="profile" aria-label="Your profile">${img(ME.avatar)}</button><button class="adfree tap" data-action="paywall">Listen Ad-Free</button><span class="topbar-title show">${title}</span><div class="topbar-icons"><button class="icon-btn" data-action="push" data-route="settings" aria-label="Settings">${icon('gear', 22)}</button></div></header>`;
+const libHeader = (title) => `<header class="topbar"><button class="avatar tap" data-action="push" data-route="profile" aria-label="Your profile">${img(ME.avatar)}</button><button class="plus-pill tap" data-action="paywall">Listen Ad-Free</button><span class="topbar-title show">${title}</span><div class="topbar-icons"><button class="icon-btn" data-action="push" data-route="settings" aria-label="Settings">${icon('gear', 22)}</button></div></header>`;
 
 // ---------- Home ----------
 export function renderTrending() {
@@ -68,7 +68,7 @@ function home() {
     html: `
     <header class="topbar home-top">
       <button class="avatar tap" data-action="push" data-route="profile" aria-label="Your profile">${img(ME.avatar)}</button>
-      <button class="adfree tap" data-action="paywall">Listen Ad-Free</button>
+      <button class="plus-pill tap" data-action="paywall">Listen Ad-Free</button>
       <span class="topbar-title">Home</span>
       <div class="topbar-icons">
         <button class="icon-btn" data-action="push" data-route="upload" aria-label="Upload">${icon('upload', 22)}</button>
@@ -87,9 +87,9 @@ function home() {
     <section class="sec">${sectionHead('Made for you')}${carousel(HOME.madeFor.map((pid) => { const p = getPlaylist(pid); return `<button class="card wide tap" data-action="open-playlist" data-id="${pid}"><div class="card-art">${img(p.art)}</div><div class="card-sub two">${esc(p.blurb)}</div></button>`; }))}</section>
     <section class="sec">${sectionHead('Discover with Stations')}${carousel(HOME.stations.map(stationCard))}</section>
     <section class="sec">
-      <button class="promo tap" data-action="open-playlist" data-id="upload">
-        <div class="promo-top"><span class="promo-logo">${icon('cloud', 30)}</span><div><div class="promo-title">THE UPLOAD</div><div class="promo-sub">${esc(getPlaylist('upload').blurb)}</div></div></div>
-        <div class="promo-arts">${getPlaylist('upload').tracks.map((id) => img(getTrack(id).art)).join('')}</div>
+      <button class="feature tap" data-action="open-playlist" data-id="upload">
+        <div class="feature-top"><span class="feature-logo">${icon('cloud', 30)}</span><div><div class="feature-title">THE UPLOAD</div><div class="feature-sub">${esc(getPlaylist('upload').blurb)}</div></div></div>
+        <div class="feature-arts">${getPlaylist('upload').tracks.map((id) => img(getTrack(id).art)).join('')}</div>
       </button>
     </section>
     <div class="end-space"></div>`,
@@ -314,7 +314,7 @@ function artist({ id }) {
   const others = Object.values(ARTISTS).filter((x) => x.id !== id && x.id !== 'kairo').slice(0, 4);
   return {
     html: `${backHeader(a.name)}
-    <div class="ar-banner">${img(a.art)}</div>
+    <div class="ar-hero">${img(a.art)}</div>
     <div class="ar-head"><div class="ar-avatar">${img(a.art)}</div>
       <h1 class="ar-name">${esc(a.name)} ${verified(a)}</h1><div class="ar-sub">${fmtCount(a.followers)} followers · ${a.tracks.length} ${a.tracks.length === 1 ? 'track' : 'tracks'}</div>
       <div class="ar-actions"><button class="follow-pill" data-action="follow" data-artist="${a.id}" data-follow="${a.id}"><span class="f-off">Follow</span><span class="f-on">Following</span></button>
