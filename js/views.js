@@ -2,7 +2,7 @@
 // that main.js handles with one delegated click listener.
 import { TRACKS, ARTISTS, PLAYLISTS, HOME, TREND_CHIPS, GENRES, NOTIFICATIONS, ME, ART, getTrack, getPlaylist, getArtist, fmtCount, fmtTime } from './data.js';
 import { icon } from './icons.js';
-import { S, likeCount } from './store.js';
+import { S } from './store.js';
 
 // Lists rendered on screen, so a tapped row can play the right queue.
 export const LISTS = {};
@@ -116,7 +116,6 @@ export function feedCards(tab) {
         <span class="fp-playing">${icon('volume', 22)} Playing preview</span>
       </button>
       <div class="feed-rail">
-        <button class="rail-btn like-btn" data-action="like" data-track="${t.id}" data-like="${t.id}" aria-label="Like">${icon('heart', 28)}${icon('heart-fill', 28)}<span data-likecount="${t.id}">${fmtCount(likeCount(t))}</span></button>
         <button class="rail-btn" data-action="sheet-comments" data-track="${t.id}" aria-label="Comments">${icon('comment', 28)}<span>${fmtCount(t.comments)}</span></button>
         <button class="rail-btn" data-action="sheet-add" data-track="${t.id}" aria-label="Add to playlist">${icon('plus-square', 28)}</button>
       </div>
@@ -203,7 +202,7 @@ function genre({ id }) {
 
 // ---------- Library ----------
 const LIB_ROWS = [
-  ['saved', 'Saved songs'], ['likes', 'Your likes'], ['playlists', 'Playlists'], ['albums', 'Albums'],
+  ['saved', 'Saved songs'], ['playlists', 'Playlists'], ['albums', 'Albums'],
   ['collection', 'Collection', true], ['following', 'Following'], ['stations', 'Stations'],
   ['downloads', 'Downloads'], ['insights', 'Your insights'], ['uploads', 'Your uploads'],
 ];
@@ -224,12 +223,10 @@ function library() {
     <div class="end-space"></div>`,
   };
 }
-function listPage(title, ids, key, empty, opts = {}) {
+function listPage(title, ids, key, empty) {
   reg(key, ids);
-  const head = opts.searchHead
-    ? `<header class="nav-head"><button class="circle-btn" data-action="back" aria-label="Back">${icon('chevron-left', 22)}</button><label class="searchbox sm">${icon('search', 18)}<input type="search" placeholder="Search ${ids.length} tracks" data-input="filter" data-list="${key}" aria-label="Search your tracks"></label><button class="icon-btn" data-action="toast" data-msg="Sorting isn't part of this prototype" aria-label="Sort">${icon('filter', 22)}</button></header>`
-    : backHeader(title);
-  if (!ids.length) return { html: `${head}${opts.searchHead ? '' : `<div class="big-title sm">${title}</div>`}${empty}` };
+  const head = backHeader(title);
+  if (!ids.length) return { html: `${head}<div class="big-title sm">${title}</div>${empty}` };
   return {
     html: `${head}<div class="big-title sm">${title}</div><div class="list-meta">${ids.length} ${ids.length === 1 ? 'track' : 'tracks'}</div>
     <div class="list-actions"><button class="icon-btn" data-action="shuffle-list" data-ctx="${key}" aria-label="Shuffle">${icon('shuffle', 24)}</button><button class="big-play" data-action="play-list" data-ctx="${key}" data-index="0" data-playctx="${key}" aria-label="Play">${icon('play', 26)}${icon('pause', 26)}</button></div>
@@ -238,33 +235,30 @@ function listPage(title, ids, key, empty, opts = {}) {
 }
 const saved = () => listPage('Saved songs', S.savedOrder.filter((id) => S.saved.has(id)), 'saved',
   emptyState('No saved songs yet', 'Tap <b>+ Save</b> on any track and it shows up here.', 'Find something to save', 'data-action="tab" data-tab="search"'));
-const likes = () => listPage('Your likes', [...S.liked].reverse(), 'likes',
-  emptyState('No liked tracks yet', "Tracks you've liked will show up here", 'Search for a track', 'data-action="tab" data-tab="search"'), { searchHead: true });
 const history = () => listPage('Listening history', S.history, 'history-all', emptyState('Nothing played yet', 'Tracks you play show up here.'));
 function playlistsPage() {
   return { html: `${backHeader('Playlists')}<div class="big-title sm">Playlists</div>
     <button class="row tap" data-action="create-playlist"><div class="row-art add">${icon('plus', 26)}</div><div class="row-main"><div class="row-title">Create playlist</div></div></button>
-    ${S.myPlaylists.map(playlistRow).join('')}
-    ${S.likedPlaylists.size ? `<div class="sec">${sectionHead('Liked playlists')}${[...S.likedPlaylists].map(playlistRow).join('')}</div>` : ''}<div class="end-space"></div>` };
+    ${S.myPlaylists.map(playlistRow).join('')}<div class="end-space"></div>` };
 }
 function recentPage() {
   return { html: `${backHeader('Recently played')}<div class="big-title sm">Recently played</div><div class="sec grid2">${S.recent.map((p) => cardFor(p, 'title')).join('')}</div><div class="end-space"></div>` };
 }
 const simple = (title, body) => ({ html: `${backHeader(title)}${body}` });
-const albums = () => simple('Albums', emptyState('No albums yet', 'Albums you like will show up here.', 'Browse albums', 'data-action="open-genre" data-id="hiphop"'));
+const albums = () => simple('Albums', emptyState('No albums yet', 'Albums you save will show up here.', 'Browse albums', 'data-action="open-genre" data-id="hiphop"'));
 const collection = () => simple('Collection', `<div class="big-title sm">Collection <em class="new-tag">NEW</em></div>${emptyState('Your collection is empty', 'Tracks and albums you buy from artists will live here.', 'Learn more', 'data-action="toast" data-msg="Collection isn\'t part of this prototype"')}`);
 function following() {
   const list = [...S.following].map(getArtist);
   if (!list.length) return simple('Following', emptyState('Not following anyone yet', 'Follow artists to see their new tracks in your Feed.', 'Search for an artist', 'data-action="tab" data-tab="search"'));
   return simple('Following', `<div class="big-title sm">Following</div>${list.map((a) => `<div class="row"><button class="row-link tap" data-action="open-artist" data-id="${a.id}"><div class="row-art round">${img(a.art)}</div><div class="row-main"><div class="row-title">${esc(a.name)} ${verified(a)}</div><div class="row-sub">${fmtCount(a.followers)} followers</div></div></button><button class="follow-pill sm" data-action="follow" data-artist="${a.id}" data-follow="${a.id}"><span class="f-off">Follow</span><span class="f-on">Following</span></button></div>`).join('')}<div class="end-space"></div>`);
 }
-const stations = () => simple('Stations', emptyState('No stations yet', 'Stations you have liked will show up here.', 'Search for an artist', 'data-action="tab" data-tab="search"'));
+const stations = () => simple('Stations', emptyState('No stations yet', 'Stations you save will show up here.', 'Search for an artist', 'data-action="tab" data-tab="search"'));
 function insights() {
   const mins = Math.max(1, Math.round(S.history.length * 3.2));
   return simple('Your insights', `<div class="big-title sm">Your insights</div><div class="stat-grid">
     <div class="stat"><b>${mins}</b><span>minutes listened this week</span></div><div class="stat"><b>${S.history.length}</b><span>tracks played</span></div>
-    <div class="stat"><b>${S.liked.size}</b><span>likes</span></div><div class="stat"><b>${S.saved.size}</b><span>saved songs</span></div></div>
-    <p class="note">Upload your own tracks to see plays, likes, and listeners here.</p>`);
+    <div class="stat"><b>${S.saved.size}</b><span>saved songs</span></div></div>
+    <p class="note">Upload your own tracks to see plays and listeners here.</p>`);
 }
 const uploads = () => simple('Your uploads', emptyState('No uploads yet', 'Your uploads will show up here.', 'Upload a track', 'data-action="push" data-route="upload"'));
 
@@ -284,7 +278,6 @@ function playlist({ id }) {
     </div>
     <div class="list-actions">
       <div class="la-left">
-        <button class="icon-btn like-btn" data-action="like-playlist" data-id="${id}" data-plike="${id}" aria-label="Like playlist">${icon('heart', 26)}${icon('heart-fill', 26)}</button>
         <button class="icon-btn" data-action="paywall" data-variant="offline" aria-label="Download">${icon('download', 24)}</button>
         <button class="icon-btn" data-action="sheet-share" data-playlist="${id}" aria-label="Share">${icon('share', 24)}</button>
       </div>
@@ -353,7 +346,7 @@ const messages = () => simple('Messages', emptyState('No messages yet', 'Share t
 const upload = () => simple('Upload', emptyState('Upload your first track', 'Share your sound with the world. Upload an audio file to get started.', 'Choose a file', 'data-action="toast" data-msg="Uploading isn\'t part of this prototype"'));
 function profile() {
   return simple('Profile', `<div class="ar-head top"><div class="ar-avatar">${img(ME.avatar)}</div><h1 class="ar-name">${ME.name}</h1><div class="ar-sub">${S.following.size} following · 0 followers</div></div>
-    <div class="lib-rows">${[['likes', 'Your likes'], ['saved', 'Saved songs'], ['following', 'Following'], ['settings', 'Settings']].map(([r, l]) => `<button class="lib-row tap" data-action="push" data-route="${r}"><span>${l}</span>${icon('chevron-right', 22)}</button>`).join('')}</div>`);
+    <div class="lib-rows">${[['saved', 'Saved songs'], ['following', 'Following'], ['settings', 'Settings']].map(([r, l]) => `<button class="lib-row tap" data-action="push" data-route="${r}"><span>${l}</span>${icon('chevron-right', 22)}</button>`).join('')}</div>`);
 }
 function settings() {
   const rows = ['Account', 'Notifications', 'Streaming quality', 'Privacy', 'Help'];
@@ -362,6 +355,6 @@ function settings() {
 }
 
 export const ROUTES = {
-  home, feed, search, library, upgrade, genre, playlist, artist, saved, likes, history, playlists: playlistsPage,
+  home, feed, search, library, upgrade, genre, playlist, artist, saved, history, playlists: playlistsPage,
   recent: recentPage, albums, collection, following, stations, insights, uploads, plans, notifications, messages, upload, profile, settings,
 };

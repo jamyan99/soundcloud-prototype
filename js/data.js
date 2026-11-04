@@ -66,13 +66,13 @@ export const FALLBACK_ART = {
 
 // ---------- Tracks ----------
 export const TRACKS = {
-  headlines: { id: 'headlines', title: 'Headlines', fullTitle: 'Headlines (Explicit Version)', artist: 'drake', by: 'Drake', uploader: 'octobersveryown', art: ART.headlines, sc: 'https://soundcloud.com/octobersveryown/drake-headlines', dur: 236000, plays: 27.9e6, likes: 439000, comments: 2240, genre: 'hiphop' },
-  nokia: { id: 'nokia', title: 'NOKIA', artist: 'drake', by: 'Drake', uploader: 'octobersveryown', art: ART.nokia, sc: 'https://soundcloud.com/octobersveryown/nokia', dur: 241000, plays: 19.6e6, likes: 252000, comments: 5590, genre: 'hiphop' },
-  highest: { id: 'highest', title: 'HIGHEST IN THE ROOM', artist: 'travis', by: 'Travis Scott', uploader: 'Travis Scott', art: ART.highest, sc: 'https://soundcloud.com/travisscott-2/highest-in-the-room', dur: 175000, plays: 67.7e6, likes: 922000, comments: 17000, genre: 'trap' },
-  wgft: { id: 'wgft', title: 'wgft (feat. Burna Boy)', artist: 'gunna', by: 'Gunna', uploader: 'Gunna', art: ART.wgft, sc: 'https://soundcloud.com/gunna/wgft-feat-burna-boy', dur: 184000, plays: 11.3e6, likes: 168000, comments: 1320, genre: 'trap' },
-  proveit: { id: 'proveit', title: 'prove it', artist: 'savage', by: '21 Savage, Summer Walker', uploader: '21 Savage', art: ART.proveit, sc: 'https://soundcloud.com/21savage/21-savage-summer-walker-prove', dur: 197000, plays: 14.2e6, likes: 201000, comments: 1874, genre: 'rnb' },
-  greece: { id: 'greece', title: 'GREECE (feat. Drake)', artist: 'khaled', by: 'DJ Khaled', uploader: 'DJ Khaled', art: ART.greece, sc: 'https://soundcloud.com/djkhaled/greece-feat-drake', dur: 218000, plays: 21.1e6, likes: 288000, comments: 2675, genre: 'hiphop' },
-  nightdrive: { id: 'nightdrive', title: 'Night Drive', artist: 'kairo', by: 'Kairo', uploader: 'Kairo', art: ART.nightdrive, synth: 'nightdrive', dur: 192000, plays: 18200, likes: 2841, comments: 96, genre: 'electronic', fresh: true },
+  headlines: { id: 'headlines', title: 'Headlines', fullTitle: 'Headlines (Explicit Version)', artist: 'drake', by: 'Drake', uploader: 'octobersveryown', art: ART.headlines, sc: 'https://soundcloud.com/octobersveryown/drake-headlines', dur: 236000, plays: 27.9e6, comments: 2240, genre: 'hiphop' },
+  nokia: { id: 'nokia', title: 'NOKIA', artist: 'drake', by: 'Drake', uploader: 'octobersveryown', art: ART.nokia, sc: 'https://soundcloud.com/octobersveryown/nokia', dur: 241000, plays: 19.6e6, comments: 5590, genre: 'hiphop' },
+  highest: { id: 'highest', title: 'HIGHEST IN THE ROOM', artist: 'travis', by: 'Travis Scott', uploader: 'Travis Scott', art: ART.highest, sc: 'https://soundcloud.com/travisscott-2/highest-in-the-room', dur: 175000, plays: 67.7e6, comments: 17000, genre: 'trap' },
+  wgft: { id: 'wgft', title: 'wgft (feat. Burna Boy)', artist: 'gunna', by: 'Gunna', uploader: 'Gunna', art: ART.wgft, sc: 'https://soundcloud.com/gunna/wgft-feat-burna-boy', dur: 184000, plays: 11.3e6, comments: 1320, genre: 'trap' },
+  proveit: { id: 'proveit', title: 'prove it', artist: 'savage', by: '21 Savage, Summer Walker', uploader: '21 Savage', art: ART.proveit, sc: 'https://soundcloud.com/21savage/21-savage-summer-walker-prove', dur: 197000, plays: 14.2e6, comments: 1874, genre: 'rnb' },
+  greece: { id: 'greece', title: 'GREECE (feat. Drake)', artist: 'khaled', by: 'DJ Khaled', uploader: 'DJ Khaled', art: ART.greece, sc: 'https://soundcloud.com/djkhaled/greece-feat-drake', dur: 218000, plays: 21.1e6, comments: 2675, genre: 'hiphop' },
+  nightdrive: { id: 'nightdrive', title: 'Night Drive', artist: 'kairo', by: 'Kairo', uploader: 'Kairo', art: ART.nightdrive, synth: 'nightdrive', dur: 192000, plays: 18200, comments: 96, genre: 'electronic', fresh: true },
 };
 
 export const ARTISTS = {
@@ -171,7 +171,7 @@ export function commentsFor(track) {
   return Array.from({ length: 9 }, (_, i) => {
     const [user, text] = COMMENT_POOL[(seed + i * 5) % COMMENT_POOL.length];
     const at = Math.floor(((seed * (i + 3)) % Math.max(30, track.dur / 1000 - 10)));
-    return { user, text, at, ago: `${(i % 6) + 1}${i % 2 ? 'd' : 'w'}`, likes: (seed * (i + 1)) % 140 };
+    return { user, text, at, ago: `${(i % 6) + 1}${i % 2 ? 'd' : 'w'}` };
   });
 }
 

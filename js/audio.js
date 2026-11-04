@@ -7,58 +7,137 @@ const now = () => performance.now();
 const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
 // ---------- SoundCloud widget ----------
-class SoundCloudSource {
-  constructor(emit) {
-    this.emit = emit;
-    this.ready = false;
-    this.queued = null;
-    this.available = !!(window.SC && window.SC.Widget);
-    if (!this.available) return;
-    const first = Object.values(TRACKS).find((t) => t.sc);
+// iPhones only let a song start inside a tap, and that shapes everything here:
+// - SoundCloud's player is an iframe, and its load() reloads the whole iframe, which throws away whatever a tap
+//   unlocked. So each song gets its own iframe, and changing songs just switches between them.
+// - The first time a player plays, it builds its audio first, which takes about a second. By then the tap has
+//   expired, the phone refuses, and the app looks like it's playing in silence. So the audio is built ahead of
+//   time (a seek does that and needs no tap), and a tap can then start it right away.
+// - A song that starts without a tap (the next in the queue, the one after an ad) needs a player an earlier tap
+//   has already opened, so every tap opens whichever players are built by then.
+class SoundCloudStream {
+  constructor(url, source) {
+    Object.assign(this, { url, source, ready: false, built: false, opened: false, failed: false, wanted: false, muted: false, queued: null });
     const frame = document.createElement('iframe');
     frame.allow = 'autoplay; encrypted-media';
     frame.title = 'SoundCloud audio stream';
-    frame.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(first.sc) +
+    frame.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
       '&auto_play=false&visual=false&show_artwork=false&buying=false&sharing=false&download=false&show_comments=false&show_playcount=false&single_active=false';
     document.getElementById('sc-host').appendChild(frame);
-    this.loadedUrl = first.sc;
     this.w = window.SC.Widget(frame);
-    const E = window.SC.Widget.Events;
+    const E = window.SC.Widget.Events, current = () => source.cur === this;
     this.w.bind(E.READY, () => {
       this.ready = true;
+      this.failed = false;    // a slow player can still arrive after the timeout gave up on it
       clearTimeout(this.readyTimer);
-      if (this.queued) { const q = this.queued; this.queued = null; this.load(q.url, q.play, q.startMs); }
+      // This song may have been picked while its player was still loading.
+      if (this.queued && current()) { const q = this.queued; this.queued = null; source.load(url, q.play, q.startMs); }
+      else { this.w.seekTo(1); this.whenBuilt(); }
     });
-    this.w.bind(E.PLAY_PROGRESS, (e) => this.emit('progress', { ms: e.currentPosition }));
-    this.w.bind(E.PLAY, () => this.emit('playing'));
-    this.w.bind(E.FINISH, () => this.emit('ended'));
-    this.w.bind(E.ERROR, () => this.emit('error'));
-    this.readyTimer = setTimeout(() => { if (!this.ready) this.emit('error'); }, 15000);
+    this.w.bind(E.PLAY_PROGRESS, (e) => current() && source.emit('progress', { ms: e.currentPosition }));
+    this.w.bind(E.PLAY, () => {
+      if (!this.wanted) return this.w.pause();
+      if (current()) { source.playSeen = true; source.emit('playing'); }
+    });
+    this.w.bind(E.PAUSE, () => current() && source.emit('paused'));
+    this.w.bind(E.FINISH, () => current() && source.emit('ended'));
+    this.w.bind(E.ERROR, () => this.fail());
+    this.readyTimer = setTimeout(() => { if (!this.ready) this.fail(); }, 15000);
+  }
+  fail() {
+    this.failed = true;
+    if (this.source.cur === this) this.source.emit('error');
+    this.source.preloadNext();
+  }
+  // The build takes a moment, and it's done when the seek shows up in SoundCloud's position.
+  whenBuilt(tries = 0) {
+    if (this.built) return;
+    this.w.getPosition((ms) => {
+      if (this.built) return;
+      if (ms > 0) { this.built = true; this.source.onBuilt(); }
+      else if (tries < 80) setTimeout(() => this.whenBuilt(tries + 1), 150);
+    });
+  }
+  play() {
+    this.wanted = true;
+    this.source.playSeen = false;
+    this.source.settledMs = undefined;
+    if (this.ready) this.w.play(); else if (this.queued) this.queued.play = true;
+  }
+  pause() {
+    this.wanted = false;
+    if (this.ready) this.w.pause(); else if (this.queued) this.queued.play = false;
+  }
+}
+
+class SoundCloudSource {
+  constructor(emit) {
+    this.emit = emit;
+    this.streams = new Map();
+    this.cur = null;
+    this.available = !!(window.SC && window.SC.Widget);
+    if (!this.available) return;
+    this.urls = Object.values(TRACKS).filter((t) => t.sc).map((t) => t.sc);
+    // Tasks that open on Night Drive or an ad never ask for a song up front, but still need a player ready.
+    setTimeout(() => { if (!this.streams.size) this.preloadNext(); });
+  }
+  stream(url) {
+    if (!this.streams.has(url)) {
+      this.streams.set(url, new SoundCloudStream(url, this));
+      setTimeout(() => this.preloadNext(), 12000);    // don't let one slow song hold up the rest
+    }
+    return this.streams.get(url);
+  }
+  // Players load one at a time, so a phone isn't parsing six copies of SoundCloud's code at once.
+  preloadNext() {
+    const url = this.urls.find((u) => !this.streams.has(u));
+    if (url) this.stream(url);
+  }
+  onBuilt() {
+    this.preloadNext();
+    if (this.built) this.emit('built');
+  }
+  // True once the player the first tap will use is built.
+  get built() {
+    const s = this.cur || this.streams.values().next().value;
+    return !!s && s.built;
   }
   load(url, play, startMs = 0) {
-    if (!this.ready) { this.queued = { url, play, startMs }; return; }
+    const s = this.stream(url);
+    if (this.cur && this.cur !== s) this.cur.pause();
+    this.cur = s;
     this.pendingSeek = startMs > 1000 ? startMs : 0;
     this.seekDeadline = 0;
+    this.settledMs = undefined;
+    this.playSeen = false;
+    if (s.failed) return this.emit('error');
+    if (!s.ready) { s.queued = { play, startMs }; return; }
     // Stay quiet until the jump to the start position lands, so the song doesn't blip from 0:00 first.
     this.mute(!!this.pendingSeek);
-    const started = () => {
-      this.w.getDuration((d) => d > 0 && this.emit('duration', { ms: d }));
-      this.w.seekTo(this.pendingSeek);
-      if (play) this.w.play();
-    };
-    // Reloading a track SoundCloud already has costs seconds, so only load when it changes.
-    if (url === this.loadedUrl) return started();
-    this.loadedUrl = url;
-    this.w.load(url, {
-      auto_play: false, visual: false, show_artwork: false, buying: false, sharing: false, download: false,
-      show_comments: false, show_playcount: false, single_active: false,
-      callback: started,
-    });
+    s.w.getDuration((d) => d > 0 && this.emit('duration', { ms: d }));
+    // 1 rather than 0, so the build shows up in SoundCloud's position.
+    s.w.seekTo(this.pendingSeek || 1);
+    s.whenBuilt();
+    if (play) s.play();
   }
-  play() { this.ready ? this.w.play() : this.queued && (this.queued.play = true); }
-  pause() { this.ready ? this.w.pause() : this.queued && (this.queued.play = false); }
-  seek(ms) { if (this.ready) this.w.seekTo(ms); }
-  mute(on) { if (this.ready && this.muted !== on) { this.muted = on; this.w.setVolume(on ? 0 : 100); } }
+  // Only call this inside a tap. Opens every built player, starting and stopping the ones that shouldn't play,
+  // which is too quick to make a sound. True once there's nothing left to open.
+  open(startingNow) {
+    if (!this.available) return true;
+    let done = true;
+    for (const url of this.urls) {
+      const s = this.streams.get(url);
+      if (s && (s.failed || s.opened)) continue;
+      if (!s || !s.built) { done = false; continue; }
+      s.opened = true;
+      if (!(startingNow && s === this.cur)) { s.w.play(); s.w.pause(); }
+    }
+    return done;
+  }
+  play() { if (this.cur) this.cur.play(); }
+  pause() { if (this.cur) this.cur.pause(); }
+  seek(ms) { if (this.cur && this.cur.ready) this.cur.w.seekTo(ms); }
+  mute(on) { const s = this.cur; if (s && s.ready && s.muted !== on) { s.muted = on; s.w.setVolume(on ? 0 : 100); } }
 }
 
 // iPhones mute Web Audio (Night Drive, the ad jingle) while the ring/silent switch is on.
@@ -239,6 +318,7 @@ export class Player {
     this.trackId = null; this.kind = null; this.playing = false;
     this.basePos = 0; this.baseAt = now(); this.dur = 0;
     this.unlocked = false; this.scFailed = false; this.previewEnd = null; this.ad = null;
+    this.waiting = false;    // SoundCloud has been asked to play, but the song isn't moving yet
     this.sc = new SoundCloudSource((type, d) => this.onSC(type, d));
   }
   on(evt, fn) { (this.handlers[evt] ||= []).push(fn); }
@@ -254,21 +334,26 @@ export class Player {
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
-  // Browsers only allow sound after the first tap or click.
+  // True when the first tap can start SoundCloud right away.
+  get audioReady() { return !this.sc.available || this.scFailed || this.sc.built; }
+  // Browsers only allow sound after the first tap or click. Call on every tap until it returns true.
   unlock() {
-    if (this.unlocked) return;
-    this.unlocked = true;
-    playThroughSilentSwitch();
-    this.ensureCtx();
-    // Like the song position, the ad countdown waits for sound: the 30 seconds start now.
-    if (this.ad) { this.ad.t0 = now(); this.startJingle(); }
-    else if (this.trackId) this.startSource(this.basePos, this.playing);
+    if (!this.unlocked) {
+      this.unlocked = true;
+      playThroughSilentSwitch();
+      this.ensureCtx();
+      // Like the song position, the ad countdown waits for sound: the 30 seconds start now.
+      if (this.ad) { this.ad.t0 = now(); this.startJingle(); }
+      else if (this.trackId) this.startSource(this.basePos, this.playing);
+    }
+    return this.scFailed || this.sc.open(this.kind === 'sc' && this.playing && !this.ad);
   }
 
   position() {
     if (!this.unlocked) return this.basePos;
     if (this.kind === 'synth' && this.synth) return this.synth.pos() * 1000;
-    if (!this.playing) return this.basePos;
+    // The clock waits for real sound, so a song that hasn't started doesn't look like it's playing.
+    if (!this.playing || this.waiting) return this.basePos;
     return Math.min(this.dur, this.basePos + (now() - this.baseAt));
   }
   remaining() {
@@ -278,18 +363,23 @@ export class Player {
 
   load(trackId, { autoplay = true, startMs = 0, preview = false } = {}) {
     this.stopSource();
+    this.waiting = false; clearTimeout(this.refusal);
     const t = getTrack(trackId);
     this.trackId = trackId; this.dur = t.dur;
     this.basePos = startMs; this.baseAt = now();
     this.previewEnd = preview ? Math.min(t.dur - 500, startMs + 30000) : null;
     this.kind = t.synth ? 'synth' : (this.sc.available && !this.scFailed ? 'sc' : 'silent');
     this.playing = !!autoplay && !this.ad;
+    // Picking a song during an ad makes it the one that plays when the ad ends.
+    if (this.ad) this.ad.upNext = trackId;
     this.emit('track', trackId); this.emit('state', this.playing);
+    if (this.ad) this.emit('adUpNext', trackId);
     if (this.unlocked && !this.ad) this.startSource(startMs, this.playing);
+    else if (!this.unlocked && this.kind === 'sc') this.sc.load(t.sc, false, startMs);
   }
   startSource(startMs, play) {
     const t = getTrack(this.trackId);
-    if (this.kind === 'sc') this.sc.load(t.sc, play, startMs);
+    if (this.kind === 'sc') { this.waiting = play; this.sc.load(t.sc, play, startMs); }
     else if (this.kind === 'synth') {
       this.ensureCtx();
       this.synth = new SynthPlayer(this.ctx, this.master, ND, () => this.emit('ended'));
@@ -306,8 +396,9 @@ export class Player {
   play() {
     if (this.ad || !this.trackId) return;
     this.basePos = this.position(); this.baseAt = now(); this.playing = true;
+    clearTimeout(this.refusal);
     if (this.unlocked) {
-      if (this.kind === 'sc') this.sc.play();
+      if (this.kind === 'sc') { this.waiting = true; this.sc.play(); }
       else if (this.kind === 'synth') this.synth ? this.synth.play() : this.startSource(this.basePos, true);
     }
     this.emit('state', true);
@@ -315,6 +406,7 @@ export class Player {
   pause() {
     if (!this.trackId) return;
     this.basePos = this.position(); this.baseAt = now(); this.playing = false;
+    this.waiting = false; clearTimeout(this.refusal);
     if (this.unlocked) {
       if (this.kind === 'sc') this.sc.pause();
       else if (this.kind === 'synth' && this.synth) this.synth.stop();
@@ -334,9 +426,14 @@ export class Player {
   }
 
   onSC(type, d) {
+    if (type === 'built') return this.emit('audioReady');
     if (this.kind !== 'sc' && type !== 'error') return;
     if (type === 'progress') {
       const sc = this.sc, ps = sc.pendingSeek;
+      // SoundCloud also reports its position while nothing is playing, and a seek nudges it, so sound means the
+      // position has really moved on from where it settled. A big jump or a step back is a seek, so start over.
+      if (!(d.ms >= sc.settledMs && d.ms - sc.settledMs < 5000)) sc.settledMs = d.ms;
+      const moving = d.ms - sc.settledMs > 120;
       if (ps) {
         // The widget can take the seek before audio has buffered, then start from 0:00 anyway.
         // Wait until it's really playing just past the target, re-seeking if it wandered off.
@@ -349,18 +446,35 @@ export class Player {
         sc.pendingSeek = 0;
         sc.mute(false);
       }
+      if (this.waiting && !moving) return;
+      this.waiting = false;
       this.basePos = d.ms; this.baseAt = now();
     } else if (type === 'playing') {
+      clearTimeout(this.refusal);
       if (!this.playing || this.ad) this.sc.pause();
+    } else if (type === 'paused') {
+      // The phone refused the song, or a call or the lock screen paused it. A quick pause and play also lands
+      // here, so give it a moment and only believe it if nothing has started since.
+      clearTimeout(this.refusal);
+      this.refusal = setTimeout(() => this.pausedByPhone(), 400);
     } else if (type === 'duration') {
       this.dur = d.ms; this.emit('duration', d.ms);
     } else if (type === 'ended') {
       if (this.playing) this.emit('ended');
     } else if (type === 'error' && !this.scFailed) {
       this.scFailed = true;
-      if (this.kind === 'sc') { this.kind = 'silent'; this.basePos = this.position(); this.baseAt = now(); }
+      if (this.kind === 'sc') { this.basePos = this.position(); this.baseAt = now(); this.waiting = false; this.kind = 'silent'; }
       this.emit('notice', "Couldn't stream from SoundCloud, so this track plays silently. Everything else still works.");
+      this.emit('audioReady');
     }
+  }
+  // Show what's really happening: paused, ready for a tap on Play to start it, instead of a clock running in silence.
+  pausedByPhone() {
+    if (!this.playing || this.ad || this.kind !== 'sc' || !this.sc.playSeen) return;
+    const refused = this.waiting;
+    this.basePos = this.position(); this.baseAt = now(); this.playing = false; this.waiting = false;
+    this.emit('state', false);
+    if (refused) this.emit('notice', 'Tap play to start the music');
   }
 
   // Called every animation frame by the app.

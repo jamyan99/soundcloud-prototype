@@ -1,7 +1,7 @@
 // App shell: navigation, the redesigned full player, mini player, sheets, toasts, and task setup.
 import { TRACKS, PLAYLISTS, ARTISTS, ART, FALLBACK_ART, getTrack, getPlaylist, getArtist, fmtCount, fmtTime, waveform, commentsFor } from './data.js';
 import { icon } from './icons.js';
-import { S, player, playFrom, playTrack, next, prev, addToHistory, likeCount } from './store.js';
+import { S, player, playFrom, playTrack, next, prev, addToHistory, addToQueue, playNext, queuedSongs } from './store.js';
 import { ROUTES, LISTS, renderTrending, feedCards, searchResults, paywallBody, trackRow, artistLinks } from './views.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -25,7 +25,7 @@ app.innerHTML = `
     <div class="mini-break-art"><img src="${ART.ad}" alt=""></div>
     <div class="mini-text"><div class="mini-title"></div><div class="mini-sub"></div></div>
     <button class="icon-btn mini-dev" data-action="sheet-devices" aria-label="Connect to a device">${icon('devices', 22)}</button>
-    <button class="icon-btn like-btn mini-like" data-action="like-current" data-like-cur aria-label="Like">${icon('heart', 22)}${icon('heart-fill', 22)}</button>
+    <button class="icon-btn mini-save" data-action="save-current" data-save-cur aria-label="Save">${icon('plus', 22, 's-off')}${icon('check', 22, 's-on')}</button>
     <button class="visit-pill" data-action="visit-site">Visit site</button>
     <span class="countdown"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" class="ring-track"/><circle cx="18" cy="18" r="15.5" class="cd-fill" stroke-dasharray="97.4" stroke-dashoffset="97.4"/></svg><b class="cd-num">30</b></span>
   </div>
@@ -59,7 +59,6 @@ app.innerHTML = `
       </div>
     </div>
     <div class="pls-social">
-      <button class="soc like-btn" data-action="like-current" data-like-cur aria-label="Like">${icon('heart', 24)}${icon('heart-fill', 24)}<span class="soc-likes"></span></button>
       <button class="soc" data-action="sheet-comments" aria-label="Comments">${icon('comment', 24)}<span class="soc-comments"></span></button>
       <button class="soc" data-action="sheet-share" aria-label="Share">${icon('share', 24)}</button>
       <button class="soc" data-action="sheet-queue" aria-label="Next up">${icon('queue', 24)}</button>
@@ -157,10 +156,6 @@ function wirePage(el) {
   el.addEventListener('scroll', () => el.classList.toggle('scrolled', el.scrollTop > 36), { passive: true });
   if (el.dataset.route === 'search') wireSearch(el);
   if (el.dataset.route === 'feed') wireFeed(el);
-  el.querySelectorAll('[data-input="filter"]').forEach((inp) => inp.addEventListener('input', () => {
-    const q = inp.value.toLowerCase();
-    el.querySelectorAll(`[data-list="${inp.dataset.list}"] .track-row`).forEach((row) => { row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none'; });
-  }));
   // Swipe from the left edge to go back. Dragging starts only after a real
   // horizontal move, so taps on the Back button still work.
   let sx = null, dx = 0, dragging = false;
@@ -210,17 +205,6 @@ function wireFeed(el) {
     if (!en.isIntersecting && en.target.dataset.feed === player.trackId && player.previewEnd) player.pause();
   }), { root: el.querySelector('.feed-scroller'), threshold: 0.5 });
   el.querySelectorAll('.feed-card').forEach((c) => feedObserver.observe(c));
-  // Double-tap a card to like it, like the real app
-  el.addEventListener('dblclick', (e) => {
-    const card = e.target.closest('.feed-card[data-feed]');
-    if (!card) return;
-    const id = card.dataset.feed;
-    if (!S.liked.has(id)) toggleLike(id);
-    const h = document.createElement('div'); h.className = 'burst'; h.innerHTML = icon('heart-fill', 96);
-    h.style.left = `${(e.clientX - card.getBoundingClientRect().left) / scale() - 48}px`;
-    h.style.top = `${(e.clientY - card.getBoundingClientRect().top) / scale() - 48}px`;
-    card.appendChild(h); setTimeout(() => h.remove(), 800);
-  });
 }
 
 // ---------- Player (redesigned Now Playing) ----------
@@ -276,7 +260,8 @@ function renderMini() {
   mini.classList.toggle('empty', !player.trackId && !ad);
   if (ad) {
     $('.mini-title').textContent = 'Ad · Brightside Coffee';
-    $('.mini-sub').textContent = `Playing after ad: ${getTrack(ad.upNext).title}`;
+    const sub = $('.mini-sub'), txt = `Playing next: ${getTrack(ad.upNext).title}`;
+    if (sub.textContent !== txt) { sub.textContent = txt; sub.classList.remove('bump'); void sub.offsetWidth; sub.classList.add('bump'); }
     mini.setAttribute('aria-label', 'Ad playing. Open ad details');
   } else if (player.trackId) {
     const t = getTrack(player.trackId);
@@ -311,16 +296,15 @@ function openCommentsSheet(id) {
   const t = getTrack(id);
   const list = [...(S.userComments[id] || []), ...commentsFor(t)];
   openSheet(`<div class="sh-title">${fmtCount(t.comments + (S.userComments[id] || []).length)} comments</div>
-    <div class="comments">${list.map((c) => `<div class="cmt"><div class="cmt-av" style="background:hsl(${[...c.user].reduce((a, ch) => a + ch.charCodeAt(0), 0) % 360} 60% 45%)">${c.user[0].toUpperCase()}</div><div class="cmt-body"><div class="cmt-meta"><b>${esc(c.user)}</b> at ${fmtTime(c.at * 1000)} · ${c.ago}</div><div>${esc(c.text)}</div></div><button class="cmt-like" data-action="noop" aria-label="Like comment">${icon('heart', 16)}<span>${c.likes || ''}</span></button></div>`).join('')}</div>
+    <div class="comments">${list.map((c) => `<div class="cmt"><div class="cmt-av" style="background:hsl(${[...c.user].reduce((a, ch) => a + ch.charCodeAt(0), 0) % 360} 60% 45%)">${c.user[0].toUpperCase()}</div><div class="cmt-body"><div class="cmt-meta"><b>${esc(c.user)}</b> at ${fmtTime(c.at * 1000)} · ${c.ago}</div><div>${esc(c.text)}</div></div></div>`).join('')}</div>
     <form class="cmt-form"><input placeholder="Comment at ${fmtTime(player.trackId === id ? player.position() : 0)}" aria-label="Add a comment" maxlength="140"><button type="submit" aria-label="Post">${icon('send', 20)}</button></form>`,
   { cls: 'tall', onMount: (sh) => {
     $('.cmt-form', sh).addEventListener('submit', (e) => {
       e.preventDefault();
       const v = $('input', sh).value.trim(); if (!v) return;
-      (S.userComments[id] ||= []).unshift({ user: 'you', text: v, at: Math.floor((player.trackId === id ? player.position() : 0) / 1000), ago: 'now', likes: 0 });
+      (S.userComments[id] ||= []).unshift({ user: 'you', text: v, at: Math.floor((player.trackId === id ? player.position() : 0) / 1000), ago: 'now' });
       openCommentsSheet(id); renderPlayerTrack(); toast('Comment posted');
     });
-    sh.querySelectorAll('.cmt-like').forEach((b) => b.addEventListener('click', () => b.classList.toggle('on')));
   } });
 }
 function openShareSheet({ track, playlist, artist }) {
@@ -330,22 +314,24 @@ function openShareSheet({ track, playlist, artist }) {
   openSheet(`<div class="sh-title">Share</div>${track ? sheetHead(what) : ''}
     <div class="share-grid">${targets.map(([n, c, ic], i) => `<button class="share-t" data-action="${i === 0 ? 'copy-link' : 'toast'}" data-link="${link}" data-msg="Sharing to ${n} isn't part of this prototype"><span style="background:${c};color:${c === '#fffc00' ? '#000' : '#fff'}">${icon(ic, 24)}</span>${n}</button>`).join('')}</div>`);
 }
+const qRow = (id, index, tag) => `<button class="row tap" data-action="queue-jump" data-index="${index}"><div class="row-art"><img src="${getTrack(id).art}" alt=""></div><div class="row-main"><div class="row-title">${esc(getTrack(id).title)}</div><div class="row-sub">${esc(getTrack(id).by)}</div></div>${tag ? `<span class="q-tag">${tag}</span>` : icon('queue', 18, 'dim')}</button>`;
 function openQueueSheet() {
-  const up = S.queue.slice(S.qi + 1);
+  const mine = queuedSongs(), rest = S.queue.slice(S.qi + 1 + S.queued);
   openSheet(`<div class="sh-title">Next up</div>
     <div class="q-now">${player.trackId ? sheetHead(getTrack(player.trackId)) : ''}<span class="q-tag">Playing</span></div>
-    <div class="sh-sub">Up next</div>
-    ${up.length ? up.map((id, i) => `<button class="row tap" data-action="queue-jump" data-index="${S.qi + 1 + i}"><div class="row-art"><img src="${getTrack(id).art}" alt=""></div><div class="row-main"><div class="row-title">${esc(getTrack(id).title)}</div><div class="row-sub">${esc(getTrack(id).by)}</div></div>${icon('queue', 18, 'dim')}</button>`).join('') : '<p class="note">Nothing queued. Related tracks will play next.</p>'}
+    ${mine.length ? `<div class="sh-sub">In your queue</div>${mine.map((id, i) => qRow(id, S.qi + 1 + i, 'Queued')).join('')}` : ''}
+    <div class="sh-sub">${mine.length ? 'Then' : 'Up next'}</div>
+    ${rest.length ? rest.map((id, i) => qRow(id, S.qi + 1 + S.queued + i)).join('') : '<p class="note">Nothing else lined up. Related tracks will play next.</p>'}
     <label class="toggle-row"><span>Autoplay related tracks</span><input type="checkbox" ${S.autoplayRelated ? 'checked' : ''} data-input="autoplay"><i></i></label>`,
   { cls: 'tall', onMount: (sh) => $('[data-input="autoplay"]', sh).addEventListener('change', (e) => { S.autoplayRelated = e.target.checked; }) });
 }
 function openTrackSheet(id) {
   const t = getTrack(id), a = ARTISTS[t.artist];
   openSheet(`${sheetHead(t)}<div class="sh-list">
-    ${sItem(S.liked.has(id) ? 'heart-fill' : 'heart', S.liked.has(id) ? 'Unlike' : 'Like', 'like', `data-track="${id}" data-close="1"`)}
     ${sItem(S.saved.has(id) ? 'check' : 'plus', S.saved.has(id) ? 'Remove from Saved songs' : 'Save', 'save', `data-track="${id}" data-close="1"`)}
     ${sItem('list-plus', 'Add to playlist', 'sheet-add', `data-track="${id}"`)}
-    ${sItem('queue', 'Play next', 'play-next', `data-track="${id}"`)}
+    ${sItem('queue', player.ad ? 'Play next (right after the ad)' : 'Play next', 'play-next', `data-track="${id}"`)}
+    ${sItem('list-end', 'Add to queue', 'add-queue', `data-track="${id}"`)}
     ${sItem('user', `Go to ${esc(a.name)}`, 'open-artist', `data-id="${a.id}"`)}
     ${sItem('radio', 'Go to station', 'open-playlist', `data-id="${{ drake: 'station-drake', gunna: 'station-gunna', travis: 'station-travis' }[a.id] || 'related-highest'}"`)}
     ${sItem('share', 'Share', 'sheet-share', `data-track="${id}"`)}
@@ -385,8 +371,12 @@ function openDevicesSheet() {
     ${sItem('devices', 'Chromecast', 'toast', 'data-msg="No Chromecast devices found"')}</div>`);
 }
 function openAdSheet() {
+  const up = player.ad && player.ad.upNext, mine = queuedSongs();
+  const line = (id, tag) => `<div class="break-row"><img src="${getTrack(id).art}" alt=""><div class="row-main"><div class="row-title">${esc(getTrack(id).title)}</div><div class="row-sub">${esc(getTrack(id).by)}</div></div><span class="q-tag">${tag}</span></div>`;
   openSheet(`<div class="break-sheet"><img src="${ART.ad}" alt=""><div class="break-tag">Ad</div><h3>Brightside Coffee</h3><p>Wake up to something bright. Fresh roasts, delivered weekly.</p>
-    <button class="pill-btn white" data-action="visit-site">Visit site</button><p class="note">Your music continues in <b class="break-left">30</b>s. Keep browsing while you wait.</p></div>`);
+    <button class="pill-btn white" data-action="visit-site">Visit site</button><p class="note">Your music continues in <b class="break-left">30</b>s. Keep browsing while you wait.</p></div>
+    ${up ? `<div class="break-next"><div class="sh-sub">After the ad</div>${line(up, 'Playing next')}${mine.map((id) => line(id, 'Queued')).join('')}
+    <p class="note">Tap any song or playlist to play it next instead. Use "Add to queue" in a song's ••• menu to line up more.</p></div>` : ''}`);
 }
 function openPaywall(variant) {
   openSheet(`<button class="sheet-x circle-btn" data-action="close-sheet" aria-label="Close">${icon('x', 22)}</button>${paywallBody(variant)}`, { cls: 'full' });
@@ -410,13 +400,8 @@ function toast(msg, action) {
   setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, action ? 4200 : 2600);
 }
 
-// ---------- Likes, saves, follows ----------
-function toggleLike(id) {
-  S.liked.has(id) ? S.liked.delete(id) : S.liked.add(id);
-  $$(`[data-like="${id}"], ${player.trackId === id ? '[data-like-cur]' : 'x-none'}`).forEach((b) => { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); });
-  refreshRoutes(['likes', 'insights']);
-}
-// Fix 2: Save has its own button and a clear confirmation, separate from the social like.
+// ---------- Saves, follows ----------
+// Fix 2: Save has its own button and a clear confirmation.
 function toggleSave(id) {
   if (S.saved.has(id)) { S.saved.delete(id); toast('Removed from your Library'); }
   else {
@@ -437,15 +422,10 @@ function toggleFollow(aid) {
 function sync() {
   const cur = player.trackId, playing = player.playing && !player.ad;
   $$('[data-now]').forEach((el) => { const on = el.dataset.now === cur; el.classList.toggle('is-now', on); el.classList.toggle('is-playing', on && playing); });
-  $$('[data-like]').forEach((el) => el.classList.toggle('on', S.liked.has(el.dataset.like)));
-  $$('[data-like-cur]').forEach((el) => el.classList.toggle('on', !!cur && S.liked.has(cur)));
   $$('[data-save-cur]').forEach((el) => el.classList.toggle('on', !!cur && S.saved.has(cur)));
-  $$('[data-likecount]').forEach((el) => { el.textContent = fmtCount(likeCount(getTrack(el.dataset.likecount))); });
   $$('[data-follow]').forEach((el) => el.classList.toggle('on', S.following.has(el.dataset.follow)));
-  $$('[data-plike]').forEach((el) => el.classList.toggle('on', S.likedPlaylists.has(el.dataset.plike)));
   $$('[data-playctx]').forEach((el) => el.classList.toggle('on', S.ctx === el.dataset.playctx && playing));
   $$('[data-playbtn]').forEach((el) => el.classList.toggle('on', el.dataset.playbtn === cur && playing));
-  if (cur) $('.soc-likes').textContent = fmtCount(likeCount(getTrack(cur)));
   app.classList.toggle('is-playing', playing);
   renderMini();
 }
@@ -463,26 +443,34 @@ const actions = {
   'play-list': (d) => {
     const ids = LISTS[d.ctx]; if (!ids || !ids.length) return;
     const i = +d.index || 0;
-    if (S.ctx === d.ctx && player.trackId === ids[i]) return player.toggle();
-    if (d.playctx && S.ctx === d.ctx) return player.toggle();
+    if (!player.ad && S.ctx === d.ctx && player.trackId === ids[i]) return player.toggle();
+    if (!player.ad && d.playctx && S.ctx === d.ctx) return player.toggle();
     playFrom(ids, i, d.ctx);
   },
-  'shuffle-list': (d) => { const ids = [...(LISTS[d.ctx] || [])].sort(() => Math.random() - 0.5); if (ids.length) { playFrom(ids, 0, d.ctx); toast('Shuffling'); } },
+  'shuffle-list': (d) => { const ids = [...(LISTS[d.ctx] || [])].sort(() => Math.random() - 0.5); if (ids.length) { playFrom(ids, 0, d.ctx); if (!player.ad) toast('Shuffling'); } },
   'play-track': (d) => playTrack(d.track),
-  'play-next': (d) => { closeSheet(); if (!player.trackId) return playTrack(d.track); S.queue.splice(S.qi + 1, 0, d.track); toast(`${getTrack(d.track).title} will play next`); },
-  'queue-jump': (d) => { S.qi = +d.index; player.load(S.queue[S.qi], { autoplay: true }); closeSheet(); },
+  'play-next': (d) => {
+    closeSheet();
+    if (!player.trackId && !player.ad) return playTrack(d.track);
+    noFrom = true; playNext(d.track); noFrom = false; // during an ad, the 'adUpNext' toast below confirms it
+    if (!player.ad) toast(`${esc(getTrack(d.track).title)} will play next`, { label: 'View', fn: openQueueSheet });
+  },
+  'add-queue': (d) => {
+    closeSheet();
+    if (!player.trackId && !player.ad) return playTrack(d.track);
+    const after = addToQueue(d.track);
+    toast(`Added to queue. ${esc(getTrack(d.track).title)} plays after ${esc(getTrack(after).title)}`, { label: 'View', fn: () => (player.ad ? openAdSheet() : openQueueSheet()) });
+  },
+  'queue-jump': (d) => { const j = +d.index, end = S.qi + S.queued; S.queued = j <= end ? end - j : 0; S.qi = j; player.load(S.queue[S.qi], { autoplay: true }); closeSheet(); },
   toggle: () => player.toggle(),
   next: () => next(),
   prev: () => prev(),
   'open-player': () => openPlayer(),
   'close-player': () => closePlayer(),
-  like: (d) => { toggleLike(d.track); if (d.close) closeSheet(); },
-  'like-current': () => player.trackId && !player.ad && toggleLike(player.trackId),
   save: (d) => { toggleSave(d.track); if (d.close) closeSheet(); },
   'save-current': () => player.trackId && toggleSave(player.trackId),
   follow: (d) => toggleFollow(d.artist),
   'follow-current': () => player.trackId && toggleFollow(getTrack(player.trackId).artist),
-  'like-playlist': (d) => { const on = S.likedPlaylists.has(d.id); on ? S.likedPlaylists.delete(d.id) : S.likedPlaylists.add(d.id); toast(on ? 'Removed from your liked playlists' : 'Added to your liked playlists'); refreshRoutes(['playlists']); },
   chip: (d, el) => {
     S.chip = d.chip;
     const page = el.closest('.page');
@@ -498,7 +486,7 @@ const actions = {
   },
   'feed-preview': (d) => {
     if (player.trackId === d.track && player.playing) return player.pause();
-    S.queue = [d.track]; S.qi = 0; S.ctx = 'feed';
+    S.queue = [d.track]; S.qi = 0; S.queued = 0; S.ctx = 'feed';
     player.load(d.track, { autoplay: true, startMs: Math.min(45000, getTrack(d.track).dur / 3), preview: true });
   },
   'genre-tab': (d, el) => {
@@ -531,7 +519,6 @@ const actions = {
   'search-set': (d) => setSearch(d.q),
   'search-clear': () => setSearch(''),
   'search-cancel': () => { const el = stacks.search[0]; const inp = $('[data-input="search"]', el); inp.value = ''; inp.blur(); el.classList.remove('searching', 'has-q'); },
-  noop: () => {},
 };
 app.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
@@ -584,14 +571,15 @@ addEventListener('keydown', (e) => {
   if (e.key === ' ' && player.trackId) { e.preventDefault(); player.toggle(); sync(); }
   if (e.key === 'Escape') { closeSheet(); if (S.playerOpen) closePlayer(); }
 });
-// Browsers allow sound only inside a real tap or key press. On phones that's when the finger
-// lifts, not when it lands, so skip events that don't count yet instead of failing silently.
-const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'keydown'];
+// Browsers allow sound only inside a real tap or key press. Which touch events count varies by phone, and an
+// early finger event can look like it counts when it doesn't, which wastes SoundCloud's one chance to open.
+// A click always counts. This keeps listening until every SoundCloud player has been opened.
+const UNLOCK_EVENTS = ['click', 'keydown'];
+let holdUnlock = false;   // the Tap to start screen is still getting the music ready
 function tryUnlock(e) {
-  const ua = navigator.userActivation;
-  if (ua ? !ua.isActive : e.type === 'pointerdown' && e.pointerType !== 'mouse') return;
-  player.unlock();
-  UNLOCK_EVENTS.forEach((ev) => removeEventListener(ev, tryUnlock, true));
+  if (holdUnlock || !e.isTrusted) return;
+  if (e.type === 'keydown' && navigator.userActivation && !navigator.userActivation.isActive) return;
+  if (player.unlock()) UNLOCK_EVENTS.forEach((ev) => removeEventListener(ev, tryUnlock, true));
 }
 UNLOCK_EVENTS.forEach((ev) => addEventListener(ev, tryUnlock, true));
 
@@ -604,6 +592,13 @@ player.on('previewEnd', () => sync());
 player.on('notice', (m) => toast(m));
 player.on('ad', () => { closePlayer(); sync(); });
 player.on('adEnd', () => { closeSheet(); sync(); });
+// Picking something during an ad: say clearly that it plays next, once the ad ends.
+let noFrom = false;
+player.on('adUpNext', (id) => {
+  const from = !noFrom && S.ctx && S.ctx.startsWith('pl-') ? getPlaylist(S.ctx.slice(3)) : null;
+  closeSheet(); sync();
+  toast(`${esc(getTrack(id).title)}${from ? ` from ${esc(from.title)}` : ''} will play next, right after the ad`, { label: 'View', fn: openAdSheet });
+});
 
 // ---------- Frame loop: progress ring, waveform, times, ad countdown, feed preview ----------
 let lastSec = -1;
@@ -658,11 +653,22 @@ refreshRoutes(['library']);
 sync();
 // A task that opens with music playing stays silent until the first tap, and that tap is often
 // on Pause, which turns the sound on and straight off. So ask for one tap before the task starts.
+// That tap has to start SoundCloud, so it waits until the music is ready, but never long enough to block a task.
 if ((player.playing || player.ad) && !CAPTURE) {
   const gate = document.createElement('button');
   gate.className = 'tap-start';
-  gate.innerHTML = `${icon('volume', 40)}<b>Tap to start</b><span>Turn your sound on</span>`;
-  gate.addEventListener('click', () => { gate.classList.add('gone'); setTimeout(() => gate.remove(), 300); });
+  const say = (title, sub) => { gate.innerHTML = `${icon('volume', 40)}<b>${title}</b><span>${sub}</span>`; };
+  const ready = () => { holdUnlock = false; gate.classList.remove('wait'); say('Tap to start', 'Turn your sound on'); };
+  if (player.audioReady) ready();
+  else {
+    holdUnlock = true;
+    gate.classList.add('wait');
+    say('Getting your music ready', 'One moment');
+    const once = () => { if (holdUnlock) ready(); };
+    player.on('audioReady', once);
+    setTimeout(once, 10000);
+  }
+  gate.addEventListener('click', () => { if (holdUnlock) return; gate.classList.add('gone'); setTimeout(() => gate.remove(), 300); });
   app.appendChild(gate);
 }
 requestAnimationFrame(frame);
